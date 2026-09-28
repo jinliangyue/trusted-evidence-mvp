@@ -1,0 +1,5 @@
+# Trusted Evidence MVP has no external dependencies.
+# All functionality is built on the Python 3.9+ standard library.
+#
+# Dev dependencies for running tests:
+pytest>=7.0
