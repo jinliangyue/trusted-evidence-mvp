@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .schemas import EvidenceRecord
+from .signatures import sign_record as _sign_record  # avoid name collision
 
 
 SCHEMA = """
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS evidence (
     operation_type       TEXT NOT NULL,
     payload_type         TEXT NOT NULL,
     payload_json         TEXT NOT NULL,
+    signer_id            TEXT,
+    signature            TEXT,
     prev_hash            TEXT NOT NULL,
     record_hash          TEXT NOT NULL
 );
@@ -41,6 +44,7 @@ CREATE TABLE IF NOT EXISTS evidence (
 CREATE INDEX IF NOT EXISTS idx_record_id ON evidence(record_id);
 CREATE INDEX IF NOT EXISTS idx_record_timestamp ON evidence(record_timestamp);
 CREATE INDEX IF NOT EXISTS idx_sensor_id ON evidence(sensor_id);
+CREATE INDEX IF NOT EXISTS idx_signer_id ON evidence(signer_id);
 """
 
 
@@ -76,12 +80,21 @@ class EvidenceStore:
         ).fetchone()
         return (row["sequence"], row["record_hash"]) if row else None
 
-    def append(self, record: EvidenceRecord) -> int:
+    def append(self, record: EvidenceRecord, secret: bytes | None = None) -> int:
         """Append a record to the chain. Returns the sequence number.
+
+        If secret is provided, sign the record AFTER prev_hash and record_hash
+        are computed but BEFORE the row is inserted. This ensures the signature
+        covers the correct prev_hash value.
 
         Hash chain invariant:
             record.record_hash = SHA256(canonical_json(record))
         where canonical_json includes prev_hash = previous record's record_hash.
+
+        Signing invariant (v0.2):
+            record.signature = HMAC-SHA256(secret, canonical_json(record))
+        where canonical_json includes signer_id, prev_hash, and excludes
+        record_hash and signature itself.
         """
         with self._connect() as conn:
             last = self._last_record(conn)
@@ -92,6 +105,9 @@ class EvidenceStore:
 
             record.record_hash = compute_record_hash(record)
 
+            if secret is not None:
+                _sign_record(record, secret)
+
             conn.execute(
                 """
                 INSERT INTO evidence (
@@ -100,8 +116,9 @@ class EvidenceStore:
                     acquisition_timestamp, record_timestamp,
                     phase, operator, operation_type,
                     payload_type, payload_json,
+                    signer_id, signature,
                     prev_hash, record_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.sequence,
@@ -117,6 +134,8 @@ class EvidenceStore:
                     record.operation_type,
                     record.payload_type,
                     json.dumps(record.payload, sort_keys=True),
+                    record.signer_id,
+                    record.signature,
                     record.prev_hash,
                     record.record_hash,
                 ),
@@ -159,6 +178,8 @@ class EvidenceStore:
             operation_type=row["operation_type"],
             payload_type=row["payload_type"],
             payload=json.loads(row["payload_json"]),
+            signer_id=row["signer_id"],
+            signature=row["signature"],
             prev_hash=row["prev_hash"],
             record_hash=row["record_hash"],
         )

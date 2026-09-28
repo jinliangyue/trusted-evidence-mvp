@@ -8,6 +8,12 @@ from .schemas import EvidenceRecord, utc_now_iso
 from .store import EvidenceStore, compute_record_hash
 from .verify import VerificationResult, verify_chain, tamper_for_demo
 from .bridge import evidence_from_inference, store_inference
+from .signatures import (
+    generate_key,
+    sign_record,
+    signer_id_from_secret,
+    verify_signature,
+)
 
 __all__ = [
     "EvidenceRecord",
@@ -19,4 +25,8 @@ __all__ = [
     "tamper_for_demo",
     "evidence_from_inference",
     "store_inference",
+    "generate_key",
+    "sign_record",
+    "signer_id_from_secret",
+    "verify_signature",
 ]

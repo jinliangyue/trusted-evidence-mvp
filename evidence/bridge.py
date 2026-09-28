@@ -45,11 +45,15 @@ def evidence_from_inference(
 def store_inference(
     store: EvidenceStore,
     inference_result: dict,
+    secret: bytes | None = None,
     **kwargs,
 ) -> int:
-    """Build EvidenceRecord from inference + append to store. Returns sequence number."""
+    """Build EvidenceRecord from inference + append to store. Returns sequence number.
+
+    If secret is provided, the record is signed (HMAC-SHA256) inside append().
+    """
     record = evidence_from_inference(inference_result, **kwargs)
-    return store.append(record)
+    return store.append(record, secret=secret)
 
 
 __all__ = ["evidence_from_inference", "store_inference"]
